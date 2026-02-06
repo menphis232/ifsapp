@@ -5,13 +5,27 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   
-  // Habilitar CORS: panel local, app móvil local y producción (ifsnutrition.com)
+  // Habilitar CORS: panel web, app móvil (Capacitor/Ionic) y producción
+  const allowedOrigins = [
+    'http://localhost:4200',
+    'http://localhost:8100',
+    'https://ifsnutrition.com',
+    'capacitor://localhost',
+    'ionic://localhost',
+    'http://localhost',
+    'https://localhost',
+  ];
   app.enableCors({
-    origin: [
-      'http://localhost:4200',
-      'http://localhost:8100',
-      'https://ifsnutrition.com',
-    ],
+    origin: (origin, callback) => {
+      // Sin origin: peticiones desde app nativa (Capacitor), Postman, etc.
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      // App móvil Capacitor/Ionic (cualquier variante)
+      if (origin.startsWith('capacitor://') || origin.startsWith('ionic://')) return callback(null, true);
+      // Subdominios de ifsnutrition.com
+      if (origin.endsWith('.ifsnutrition.com')) return callback(null, true);
+      callback(new Error('CORS no permitido'));
+    },
     credentials: true,
   });
 
