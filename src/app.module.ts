@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
+import { readFileSync, existsSync } from 'fs';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { MobiliarioModule } from './mobiliario/mobiliario.module';
 import { InventarioModule } from './inventario/inventario.module';
@@ -41,7 +42,21 @@ import { AuditInterceptor } from './sistema-log/audit.interceptor';
       database: process.env.DB_DATABASE || 'inventarioifs',
       entities: [__dirname + '/**/*.entity{.ts,.js}'],
       synchronize: true,
-      ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+      ssl:
+        process.env.DB_SSL === 'true'
+          ? (() => {
+              // Render/cloud: certificado desde variable de entorno
+              if (process.env.DB_CA_CERT) {
+                return { ca: process.env.DB_CA_CERT, rejectUnauthorized: true };
+              }
+              // Local: certificado desde archivo
+              const certPath = join(process.cwd(), 'certs', 'aiven-ca.pem');
+              if (existsSync(certPath)) {
+                return { ca: readFileSync(certPath, 'utf8'), rejectUnauthorized: true };
+              }
+              return { rejectUnauthorized: false };
+            })()
+          : false,
     }),
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, '..', 'uploads'),
