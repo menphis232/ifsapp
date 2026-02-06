@@ -5,9 +5,13 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   
-  // Habilitar CORS: panel (4200) y app móvil (8100)
+  // Habilitar CORS: panel local, app móvil local y producción (ifsnutrition.com)
   app.enableCors({
-    origin: ['http://localhost:4200', 'http://localhost:8100'],
+    origin: [
+      'http://localhost:4200',
+      'http://localhost:8100',
+      'https://ifsnutrition.com',
+    ],
     credentials: true,
   });
 
