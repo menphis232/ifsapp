@@ -52,8 +52,14 @@ export class ProduccionController {
     @Body('formulaId') formulaId: string,
     @Body('potes1kg') potes1kg: number,
     @Body('potesMedioKg') potesMedioKg: number,
+    @Body('potes3kg') potes3kg?: number,
   ) {
-    return this.produccionService.verificarEnvasesYEtiquetas(formulaId, potes1kg, potesMedioKg);
+    return this.produccionService.verificarEnvasesYEtiquetas(
+      formulaId,
+      potes1kg,
+      potesMedioKg,
+      potes3kg || 0,
+    );
   }
 
   @Post('crear')

@@ -1,9 +1,10 @@
 import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, Not, In } from 'typeorm';
 import { Etiqueta, TipoEtiqueta } from './entities/etiqueta.entity';
 import { CreateEtiquetaDto } from './dto/create-etiqueta.dto';
 import { UpdateEtiquetaDto } from './dto/update-etiqueta.dto';
+import { PRODUCTOS_PRESENTACIONES } from '../produccion/productos-presentaciones.config';
 
 @Injectable()
 export class EtiquetaService implements OnModuleInit {
@@ -12,42 +13,45 @@ export class EtiquetaService implements OnModuleInit {
     private etiquetaRepository: Repository<Etiqueta>,
   ) {}
 
-  /** Productos con presentación 1kg y 500g (mismo ID que fórmulas hardcodeadas) */
-  private readonly productosConPresentaciones = [
-    { formulaId: 'massgainer-001', nombre: 'Mass Gainer' },
-    { formulaId: 'bcaaa-001', nombre: 'BCAAA' },
-    { formulaId: 'proteina-chocolate-001', nombre: 'Proteína de Chocolate' },
-    { formulaId: 'proteina-vainilla-001', nombre: 'Proteína de Vainilla' },
-  ];
-
   async onModuleInit() {
     await this.inicializarEtiquetasDefault();
   }
 
   async inicializarEtiquetasDefault(): Promise<void> {
-    const etiquetasDefault: Array<{ nombre: string; formulaId: string; tipo: TipoEtiqueta; descripcion: string }> = [];
-    for (const p of this.productosConPresentaciones) {
-      etiquetasDefault.push({
-        nombre: `${p.nombre} 1kg`,
-        formulaId: p.formulaId,
-        tipo: TipoEtiqueta.KILO,
-        descripcion: `Etiqueta 1kg para ${p.nombre}`,
-      });
-      etiquetasDefault.push({
-        nombre: `${p.nombre} 500g`,
-        formulaId: p.formulaId,
-        tipo: TipoEtiqueta.MEDIO_KILO,
-        descripcion: `Etiqueta 500g para ${p.nombre}`,
-      });
-    }
+    for (const f of PRODUCTOS_PRESENTACIONES) {
+      const tiposPermitidos = f.presentaciones.map((p) => p.tipo);
 
-    for (const etiqueta of etiquetasDefault) {
-      const existe = await this.etiquetaRepository.findOne({
-        where: { nombre: etiqueta.nombre, formulaId: etiqueta.formulaId },
+      const obsoletos = await this.etiquetaRepository.find({
+        where: {
+          formulaId: f.formulaId,
+          tipo: Not(In(tiposPermitidos)) as any,
+          activo: true,
+        },
       });
+      for (const obs of obsoletos) {
+        await this.etiquetaRepository.update(obs.id, { activo: false });
+      }
 
-      if (!existe) {
-        await this.create(etiqueta as any);
+      for (const p of f.presentaciones) {
+        const nombre = `${f.nombre} ${p.label.replace(/\s/g, '')}`;
+        const tipo = p.tipo as TipoEtiqueta;
+        const existe = await this.etiquetaRepository.findOne({
+          where: { formulaId: f.formulaId, tipo },
+        });
+        if (!existe) {
+          await this.create({
+            nombre,
+            formulaId: f.formulaId,
+            tipo,
+            descripcion: `Etiqueta ${p.label} para ${f.nombre}`,
+            activo: true,
+          } as any);
+        } else {
+          await this.etiquetaRepository.update(existe.id, {
+            activo: true,
+            nombre,
+          });
+        }
       }
     }
   }
@@ -59,19 +63,16 @@ export class EtiquetaService implements OnModuleInit {
 
   async findAll(): Promise<Etiqueta[]> {
     return this.etiquetaRepository.find({
+      where: { activo: true },
       order: { nombre: 'ASC' },
     });
   }
 
   async findOne(id: string): Promise<Etiqueta> {
-    const etiqueta = await this.etiquetaRepository.findOne({
-      where: { id },
-    });
-
+    const etiqueta = await this.etiquetaRepository.findOne({ where: { id } });
     if (!etiqueta) {
       throw new NotFoundException(`Etiqueta con ID ${id} no encontrada`);
     }
-
     return etiqueta;
   }
 
@@ -81,7 +82,6 @@ export class EtiquetaService implements OnModuleInit {
     });
   }
 
-  /** Etiquetas de un producto para una presentación (1kg o 500g) */
   async findByFormulaAndTipo(formulaId: string, tipo: string): Promise<Etiqueta[]> {
     return this.etiquetaRepository.find({
       where: { formulaId, tipo: tipo as any, activo: true },

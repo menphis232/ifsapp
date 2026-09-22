@@ -9,6 +9,7 @@ import {
 export enum TipoEtiqueta {
   KILO = 'kilo',
   MEDIO_KILO = 'medio_kilo',
+  TRES_KILOS = 'tres_kilos',
 }
 
 @Entity('etiquetas')

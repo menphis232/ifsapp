@@ -9,6 +9,7 @@ import {
 export enum TipoEnvase {
   KILO = 'kilo',
   MEDIO_KILO = 'medio_kilo',
+  TRES_KILOS = 'tres_kilos',
 }
 
 @Entity('envases')
@@ -26,10 +27,10 @@ export class Envase {
   @Column({
     type: 'text',
   })
-  tipo: TipoEnvase; // 'kilo' o 'medio_kilo'
+  tipo: TipoEnvase; // 'kilo' | 'medio_kilo' | 'tres_kilos'
 
   @Column({ type: 'decimal', precision: 10, scale: 2 })
-  capacidad: number; // 1.0 para kilo, 0.5 para medio kilo
+  capacidad: number; // 1.0, 0.5 o 3.0
 
   @Column({ nullable: true })
   descripcion: string;

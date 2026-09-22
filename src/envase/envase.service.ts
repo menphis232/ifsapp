@@ -1,9 +1,10 @@
 import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, Not, In } from 'typeorm';
 import { Envase, TipoEnvase } from './entities/envase.entity';
 import { CreateEnvaseDto } from './dto/create-envase.dto';
 import { UpdateEnvaseDto } from './dto/update-envase.dto';
+import { PRODUCTOS_PRESENTACIONES } from '../produccion/productos-presentaciones.config';
 
 @Injectable()
 export class EnvaseService implements OnModuleInit {
@@ -12,44 +13,47 @@ export class EnvaseService implements OnModuleInit {
     private envaseRepository: Repository<Envase>,
   ) {}
 
-  /** Productos con presentación 1kg y 500g (mismo ID que fórmulas hardcodeadas) */
-  private readonly productosConPresentaciones = [
-    { formulaId: 'massgainer-001', nombre: 'Mass Gainer' },
-    { formulaId: 'bcaaa-001', nombre: 'BCAAA' },
-    { formulaId: 'proteina-chocolate-001', nombre: 'Proteína de Chocolate' },
-    { formulaId: 'proteina-vainilla-001', nombre: 'Proteína de Vainilla' },
-  ];
-
   async onModuleInit() {
     await this.inicializarEnvasesDefault();
   }
 
   async inicializarEnvasesDefault(): Promise<void> {
-    const envasesDefault: Array<{ nombre: string; formulaId: string; tipo: TipoEnvase; capacidad: number; descripcion: string }> = [];
-    for (const p of this.productosConPresentaciones) {
-      envasesDefault.push({
-        nombre: `${p.nombre} 1kg`,
-        formulaId: p.formulaId,
-        tipo: TipoEnvase.KILO,
-        capacidad: 1.0,
-        descripcion: `Pote 1kg para ${p.nombre}`,
-      });
-      envasesDefault.push({
-        nombre: `${p.nombre} 500g`,
-        formulaId: p.formulaId,
-        tipo: TipoEnvase.MEDIO_KILO,
-        capacidad: 0.5,
-        descripcion: `Pote 500g para ${p.nombre}`,
-      });
-    }
+    for (const f of PRODUCTOS_PRESENTACIONES) {
+      const tiposPermitidos = f.presentaciones.map((p) => p.tipo);
 
-    for (const envase of envasesDefault) {
-      const existe = await this.envaseRepository.findOne({
-        where: { nombre: envase.nombre, formulaId: envase.formulaId },
+      const obsoletos = await this.envaseRepository.find({
+        where: {
+          formulaId: f.formulaId,
+          tipo: Not(In(tiposPermitidos)) as any,
+          activo: true,
+        },
       });
+      for (const obs of obsoletos) {
+        await this.envaseRepository.update(obs.id, { activo: false });
+      }
 
-      if (!existe) {
-        await this.create(envase as any);
+      for (const p of f.presentaciones) {
+        const nombre = `${f.nombre} ${p.label.replace(/\s/g, '')}`;
+        const tipo = p.tipo as TipoEnvase;
+        const existe = await this.envaseRepository.findOne({
+          where: { formulaId: f.formulaId, tipo },
+        });
+        if (!existe) {
+          await this.create({
+            nombre,
+            formulaId: f.formulaId,
+            tipo,
+            capacidad: p.capacidadKg,
+            descripcion: `Pote ${p.label} para ${f.nombre}`,
+            activo: true,
+          } as any);
+        } else {
+          await this.envaseRepository.update(existe.id, {
+            activo: true,
+            capacidad: p.capacidadKg,
+            nombre,
+          });
+        }
       }
     }
   }
@@ -61,19 +65,16 @@ export class EnvaseService implements OnModuleInit {
 
   async findAll(): Promise<Envase[]> {
     return this.envaseRepository.find({
+      where: { activo: true },
       order: { capacidad: 'DESC' },
     });
   }
 
   async findOne(id: string): Promise<Envase> {
-    const envase = await this.envaseRepository.findOne({
-      where: { id },
-    });
-
+    const envase = await this.envaseRepository.findOne({ where: { id } });
     if (!envase) {
       throw new NotFoundException(`Envase con ID ${id} no encontrado`);
     }
-
     return envase;
   }
 
@@ -83,7 +84,6 @@ export class EnvaseService implements OnModuleInit {
     });
   }
 
-  /** Envases de un producto para una presentación (1kg o 500g) */
   async findByFormulaAndTipo(formulaId: string, tipo: string): Promise<Envase[]> {
     return this.envaseRepository.find({
       where: { formulaId, tipo: tipo as any, activo: true },

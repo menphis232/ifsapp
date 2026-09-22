@@ -21,10 +21,13 @@ export class Produccion {
   cantidadTotalProducida: number; // Total en kilos producidos (ej: 95 kg)
 
   @Column({ type: 'int', default: 0 })
-  potes1kg: number; // Cantidad de potes de 1kg producidos
+  potes1kg: number; // Potes de 1kg
 
   @Column({ type: 'int', default: 0 })
-  potesMedioKg: number; // Cantidad de potes de 0.5kg producidos
+  potesMedioKg: number; // Potes de 500g
+
+  @Column({ type: 'int', default: 0 })
+  potes3kg: number; // Potes de 3kg (Mass Gainer)
 
   @Column({ nullable: true })
   notas: string;

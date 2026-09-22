@@ -108,23 +108,57 @@ export class ProduccionService {
 
   async calcularPotes(
     formulaId: string,
-    potes1kgSolicitados: number,
-  ): Promise<{ potes1kg: number; potesMedioKg: number; resto: number }> {
-    const cantidadTotalKg = this.formulasHardcodeadasService.getCantidadTotalKg(formulaId);
-    const totalKg1kg = potes1kgSolicitados * 1.0;
-    const resto = cantidadTotalKg - totalKg1kg;
-
-    let potesMedioKg = 0;
-    if (resto > 0) {
-      potesMedioKg = Math.floor(resto / 0.5);
+    potesPrincipalesSolicitados: number,
+  ): Promise<{
+    items: Array<{ tipo: string; capacidadKg: number; cantidad: number; label: string }>;
+    potes1kg: number;
+    potesMedioKg: number;
+    potes3kg: number;
+    resto: number;
+    presentaciones: Array<{ tipo: string; capacidadKg: number; label: string }>;
+  }> {
+    const formula = this.formulasHardcodeadasService.getFormulaPorId(formulaId);
+    if (!formula) {
+      throw new BadRequestException(`Fórmula con ID ${formulaId} no encontrada`);
     }
 
-    const restoFinal = resto - potesMedioKg * 0.5;
+    const presentaciones = [...formula.presentaciones].sort(
+      (a, b) => b.capacidadKg - a.capacidadKg,
+    );
+    const cantidadTotalKg = formula.cantidadTotalKg;
+    const principal = presentaciones[0];
+    const potesPrincipales = Math.max(0, Number(potesPrincipalesSolicitados) || 0);
+
+    let resto = cantidadTotalKg - potesPrincipales * principal.capacidadKg;
+    const items: Array<{ tipo: string; capacidadKg: number; cantidad: number; label: string }> = [
+      {
+        tipo: principal.tipo,
+        capacidadKg: principal.capacidadKg,
+        cantidad: potesPrincipales,
+        label: principal.label,
+      },
+    ];
+
+    for (const p of presentaciones.slice(1)) {
+      const cantidad = resto > 0 ? Math.floor(resto / p.capacidadKg) : 0;
+      items.push({
+        tipo: p.tipo,
+        capacidadKg: p.capacidadKg,
+        cantidad,
+        label: p.label,
+      });
+      resto -= cantidad * p.capacidadKg;
+    }
+
+    const byTipo = (tipo: string) => items.find((i) => i.tipo === tipo)?.cantidad || 0;
 
     return {
-      potes1kg: potes1kgSolicitados,
-      potesMedioKg,
-      resto: restoFinal,
+      items,
+      potes1kg: byTipo('kilo'),
+      potesMedioKg: byTipo('medio_kilo'),
+      potes3kg: byTipo('tres_kilos'),
+      resto: Math.max(0, Math.round(resto * 1000) / 1000),
+      presentaciones,
     };
   }
 
@@ -132,80 +166,53 @@ export class ProduccionService {
     formulaId: string,
     potes1kg: number,
     potesMedioKg: number,
+    potes3kg = 0,
   ): Promise<{ disponible: boolean; mensajes: string[] }> {
     const mensajes: string[] = [];
+    const cantidades: Record<string, number> = {
+      kilo: potes1kg || 0,
+      medio_kilo: potesMedioKg || 0,
+      tres_kilos: potes3kg || 0,
+    };
+    const labels: Record<string, string> = {
+      kilo: '1 kg',
+      medio_kilo: '500 g',
+      tres_kilos: '3 kg',
+    };
 
-    // Envases del producto (presentación 1kg y 500g)
-    const envases1kg = await this.envaseService.findByFormulaAndTipo(formulaId, 'kilo');
-    const envasesMedioKg = await this.envaseService.findByFormulaAndTipo(formulaId, 'medio_kilo');
+    for (const [tipo, requerido] of Object.entries(cantidades)) {
+      if (requerido <= 0) continue;
 
-    if (envases1kg.length === 0 && potes1kg > 0) {
-      mensajes.push('No hay envases de 1kg de este producto en el inventario');
-    } else if (potes1kg > 0) {
-      try {
-        const invEnvase1kg = await this.inventarioEnvaseService.findByEnvase(envases1kg[0].id);
-        if (invEnvase1kg.cantidad < potes1kg) {
-          mensajes.push(
-            `No hay suficientes envases de 1kg. Disponible: ${invEnvase1kg.cantidad}, Requerido: ${potes1kg}`,
-          );
+      const envases = await this.envaseService.findByFormulaAndTipo(formulaId, tipo);
+      if (envases.length === 0) {
+        mensajes.push(`No hay envases de ${labels[tipo]} de este producto en el inventario`);
+      } else {
+        try {
+          const inv = await this.inventarioEnvaseService.findByEnvase(envases[0].id);
+          if (Number(inv.cantidad) < requerido) {
+            mensajes.push(
+              `No hay suficientes envases de ${labels[tipo]}. Disponible: ${inv.cantidad}, Requerido: ${requerido}`,
+            );
+          }
+        } catch {
+          mensajes.push(`No hay envases de ${labels[tipo]} de este producto en el inventario`);
         }
-      } catch (error) {
-        mensajes.push('No hay envases de 1kg de este producto en el inventario');
       }
-    }
 
-    if (envasesMedioKg.length === 0 && potesMedioKg > 0) {
-      mensajes.push('No hay envases de 0.5kg de este producto en el inventario');
-    } else if (potesMedioKg > 0) {
-      try {
-        const invEnvaseMedioKg = await this.inventarioEnvaseService.findByEnvase(
-          envasesMedioKg[0].id,
-        );
-        if (invEnvaseMedioKg.cantidad < potesMedioKg) {
-          mensajes.push(
-            `No hay suficientes envases de 0.5kg. Disponible: ${invEnvaseMedioKg.cantidad}, Requerido: ${potesMedioKg}`,
-          );
+      const etiquetas = await this.etiquetaService.findByFormulaAndTipo(formulaId, tipo);
+      if (etiquetas.length === 0) {
+        mensajes.push(`No hay etiquetas de ${labels[tipo]} de este producto en el inventario`);
+      } else {
+        try {
+          const inv = await this.inventarioEtiquetaService.findByEtiqueta(etiquetas[0].id);
+          if (Number(inv.cantidad) < requerido) {
+            mensajes.push(
+              `No hay suficientes etiquetas de ${labels[tipo]}. Disponible: ${inv.cantidad}, Requerido: ${requerido}`,
+            );
+          }
+        } catch {
+          mensajes.push(`No hay etiquetas de ${labels[tipo]} de este producto en el inventario`);
         }
-      } catch (error) {
-        mensajes.push('No hay envases de 0.5kg de este producto en el inventario');
-      }
-    }
-
-    // Etiquetas del producto
-    const etiquetas1kg = await this.etiquetaService.findByFormulaAndTipo(formulaId, 'kilo');
-    const etiquetasMedioKg = await this.etiquetaService.findByFormulaAndTipo(formulaId, 'medio_kilo');
-
-    if (etiquetas1kg.length === 0 && potes1kg > 0) {
-      mensajes.push('No hay etiquetas de 1kg de este producto en el inventario');
-    } else if (potes1kg > 0) {
-      try {
-        const invEtiqueta1kg = await this.inventarioEtiquetaService.findByEtiqueta(
-          etiquetas1kg[0].id,
-        );
-        if (invEtiqueta1kg.cantidad < potes1kg) {
-          mensajes.push(
-            `No hay suficientes etiquetas de 1kg. Disponible: ${invEtiqueta1kg.cantidad}, Requerido: ${potes1kg}`,
-          );
-        }
-      } catch (error) {
-        mensajes.push('No hay etiquetas de 1kg de este producto en el inventario');
-      }
-    }
-
-    if (etiquetasMedioKg.length === 0 && potesMedioKg > 0) {
-      mensajes.push('No hay etiquetas de 0.5kg de este producto en el inventario');
-    } else if (potesMedioKg > 0) {
-      try {
-        const invEtiquetaMedioKg = await this.inventarioEtiquetaService.findByEtiqueta(
-          etiquetasMedioKg[0].id,
-        );
-        if (invEtiquetaMedioKg.cantidad < potesMedioKg) {
-          mensajes.push(
-            `No hay suficientes etiquetas de 0.5kg. Disponible: ${invEtiquetaMedioKg.cantidad}, Requerido: ${potesMedioKg}`,
-          );
-        }
-      } catch (error) {
-        mensajes.push('No hay etiquetas de 0.5kg de este producto en el inventario');
       }
     }
 
@@ -234,7 +241,7 @@ export class ProduccionService {
     // 2. Calcular cantidad total producida desde la fórmula hardcodeada
     const cantidadTotalKg = formula.cantidadTotalKg;
 
-    // 3. Calcular potes
+    // 3. Calcular potes según presentaciones del producto
     const calculoPotes = await this.calcularPotes(
       crearProduccionDto.formulaId,
       crearProduccionDto.potes1kg,
@@ -242,13 +249,15 @@ export class ProduccionService {
 
     const potes1kg = calculoPotes.potes1kg;
     const potesMedioKg =
-      crearProduccionDto.potesMedioKg || calculoPotes.potesMedioKg;
+      crearProduccionDto.potesMedioKg ?? calculoPotes.potesMedioKg;
+    const potes3kg = crearProduccionDto.potes3kg ?? calculoPotes.potes3kg;
 
     // 4. Verificar envases y etiquetas del producto
     const verificacion = await this.verificarEnvasesYEtiquetas(
       crearProduccionDto.formulaId,
       potes1kg,
       potesMedioKg,
+      potes3kg,
     );
     if (!verificacion.disponible) {
       throw new BadRequestException({
@@ -259,10 +268,11 @@ export class ProduccionService {
 
     // 5. Crear registro de producción (sin guardar la fórmula completa, solo el ID)
     const produccion = this.produccionRepository.create({
-      formulaId: crearProduccionDto.formulaId, // Solo guardamos el ID, no los detalles
+      formulaId: crearProduccionDto.formulaId,
       cantidadTotalProducida: cantidadTotalKg,
       potes1kg,
       potesMedioKg,
+      potes3kg,
       notas: crearProduccionDto.notas,
     });
 
@@ -270,6 +280,14 @@ export class ProduccionService {
 
     // 6. Crear registros individuales de potes
     let numeroPote = 1;
+    for (let i = 0; i < potes3kg; i++) {
+      const pote = this.produccionPoteRepository.create({
+        produccionId: produccionGuardada.id,
+        capacidad: 3.0,
+        numeroPote: numeroPote++,
+      });
+      await this.produccionPoteRepository.save(pote);
+    }
     for (let i = 0; i < potes1kg; i++) {
       const pote = this.produccionPoteRepository.create({
         produccionId: produccionGuardada.id,
@@ -278,7 +296,6 @@ export class ProduccionService {
       });
       await this.produccionPoteRepository.save(pote);
     }
-
     for (let i = 0; i < potesMedioKg; i++) {
       const pote = this.produccionPoteRepository.create({
         produccionId: produccionGuardada.id,
@@ -322,30 +339,47 @@ export class ProduccionService {
     }
 
     // 8. Descontar envases del producto
-    const envases1kgProd = await this.envaseService.findByFormulaAndTipo(crearProduccionDto.formulaId, 'kilo');
-    if (envases1kgProd.length > 0 && potes1kg > 0) {
-      await this.inventarioEnvaseService.descontar(envases1kgProd[0].id, potes1kg);
-    }
-    const envasesMedioKgProd = await this.envaseService.findByFormulaAndTipo(crearProduccionDto.formulaId, 'medio_kilo');
-    if (envasesMedioKgProd.length > 0 && potesMedioKg > 0) {
-      await this.inventarioEnvaseService.descontar(envasesMedioKgProd[0].id, potesMedioKg);
-    }
+    const descontarEnvase = async (tipo: string, cantidad: number) => {
+      if (cantidad <= 0) return;
+      const lista = await this.envaseService.findByFormulaAndTipo(
+        crearProduccionDto.formulaId,
+        tipo,
+      );
+      if (lista.length > 0) {
+        await this.inventarioEnvaseService.descontar(lista[0].id, cantidad);
+      }
+    };
+    await descontarEnvase('tres_kilos', potes3kg);
+    await descontarEnvase('kilo', potes1kg);
+    await descontarEnvase('medio_kilo', potesMedioKg);
 
     // 9. Descontar etiquetas del producto
-    const etiquetas1kgProd = await this.etiquetaService.findByFormulaAndTipo(crearProduccionDto.formulaId, 'kilo');
-    if (etiquetas1kgProd.length > 0 && potes1kg > 0) {
-      await this.inventarioEtiquetaService.descontar(etiquetas1kgProd[0].id, potes1kg);
-    }
-    const etiquetasMedioKgProd = await this.etiquetaService.findByFormulaAndTipo(crearProduccionDto.formulaId, 'medio_kilo');
-    if (etiquetasMedioKgProd.length > 0 && potesMedioKg > 0) {
-      await this.inventarioEtiquetaService.descontar(etiquetasMedioKgProd[0].id, potesMedioKg);
-    }
+    const descontarEtiqueta = async (tipo: string, cantidad: number) => {
+      if (cantidad <= 0) return;
+      const lista = await this.etiquetaService.findByFormulaAndTipo(
+        crearProduccionDto.formulaId,
+        tipo,
+      );
+      if (lista.length > 0) {
+        await this.inventarioEtiquetaService.descontar(lista[0].id, cantidad);
+      }
+    };
+    await descontarEtiqueta('tres_kilos', potes3kg);
+    await descontarEtiqueta('kilo', potes1kg);
+    await descontarEtiqueta('medio_kilo', potesMedioKg);
 
     const formulaInfo = this.formulasHardcodeadasService.getFormulaPorId(crearProduccionDto.formulaId);
+    const resumenPotes = [
+      potes3kg > 0 ? `${potes3kg} potes 3kg` : null,
+      potes1kg > 0 ? `${potes1kg} potes 1kg` : null,
+      potesMedioKg > 0 ? `${potesMedioKg} potes 500g` : null,
+    ]
+      .filter(Boolean)
+      .join(', ');
     this.notificacionService
       .enviarNotificacionPersonalizada(
         'Nueva mezcla/producción',
-        `Producción: ${formulaInfo?.nombre || crearProduccionDto.formulaId} - ${potes1kg} potes 1kg, ${potesMedioKg} potes 500g`,
+        `Producción: ${formulaInfo?.nombre || crearProduccionDto.formulaId} - ${resumenPotes || 'sin potes'}`,
       )
       .catch(() => {});
 

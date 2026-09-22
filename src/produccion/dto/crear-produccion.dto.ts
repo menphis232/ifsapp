@@ -4,14 +4,20 @@ export class CrearProduccionDto {
   @IsString()
   formulaId: string;
 
+  /** Potes de la presentación principal (la de mayor capacidad del producto). */
   @IsInt()
-  @Min(1)
-  potes1kg: number; // Cantidad de potes de 1kg que quiere producir
+  @Min(0)
+  potes1kg: number;
 
   @IsInt()
   @Min(0)
   @IsOptional()
-  potesMedioKg?: number; // Cantidad de potes de 0.5kg (opcional, se calcula automáticamente)
+  potesMedioKg?: number;
+
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  potes3kg?: number;
 
   @IsString()
   @IsOptional()

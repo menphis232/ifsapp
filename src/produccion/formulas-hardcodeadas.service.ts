@@ -1,28 +1,36 @@
 import { Injectable } from '@nestjs/common';
+import {
+  getPresentacionesProducto,
+  PresentacionConfig,
+  TipoPresentacion,
+} from './productos-presentaciones.config';
 
 export interface IngredienteFormula {
   nombreIngrediente: string;
   cantidadRequerida: number;
-  unidadMedida: string; // 'saco', 'kilo', 'paquete', etc.
+  unidadMedida: string;
 }
+
+export type { TipoPresentacion, PresentacionConfig as PresentacionFormula };
 
 export interface FormulaHardcodeada {
   id: string;
   nombre: string;
   descripcion?: string;
   cantidadTotalKg: number;
+  presentaciones: PresentacionConfig[];
   ingredientes: IngredienteFormula[];
 }
 
 @Injectable()
 export class FormulasHardcodeadasService {
-  // Fórmulas hardcodeadas - NO EXPONER AL FRONTEND
   private readonly formulas: FormulaHardcodeada[] = [
     {
       id: 'massgainer-001',
       nombre: 'Mass Gainer',
-      descripcion: 'Presentación 1kg y 500g',
+      descripcion: 'Presentación solo pote 3 kg',
       cantidadTotalKg: 95,
+      presentaciones: getPresentacionesProducto('massgainer-001'),
       ingredientes: [
         { nombreIngrediente: 'Suero de leche', cantidadRequerida: 1, unidadMedida: 'saco' },
         { nombreIngrediente: 'Endulzante', cantidadRequerida: 30, unidadMedida: 'kilo' },
@@ -35,15 +43,25 @@ export class FormulasHardcodeadasService {
     {
       id: 'bcaaa-001',
       nombre: 'BCAAA',
-      descripcion: 'Presentación 1kg y 500g',
+      descripcion: 'Presentación solo pote 500 g',
       cantidadTotalKg: 50,
+      presentaciones: getPresentacionesProducto('bcaaa-001'),
+      ingredientes: [],
+    },
+    {
+      id: 'creatina-001',
+      nombre: 'Creatina',
+      descripcion: 'Presentación potes 500 g y 1 kg',
+      cantidadTotalKg: 30,
+      presentaciones: getPresentacionesProducto('creatina-001'),
       ingredientes: [],
     },
     {
       id: 'proteina-chocolate-001',
       nombre: 'Proteína de Chocolate',
-      descripcion: 'Presentación 1kg y 500g',
+      descripcion: 'Presentación 1 kg y 500 g',
       cantidadTotalKg: 59,
+      presentaciones: getPresentacionesProducto('proteina-chocolate-001'),
       ingredientes: [
         { nombreIngrediente: 'Suero de leche', cantidadRequerida: 1, unidadMedida: 'saco' },
         { nombreIngrediente: 'Endulzante', cantidadRequerida: 16, unidadMedida: 'kilo' },
@@ -56,8 +74,9 @@ export class FormulasHardcodeadasService {
     {
       id: 'proteina-vainilla-001',
       nombre: 'Proteína de Vainilla',
-      descripcion: 'Presentación 1kg y 500g',
+      descripcion: 'Presentación 1 kg y 500 g',
       cantidadTotalKg: 58,
+      presentaciones: getPresentacionesProducto('proteina-vainilla-001'),
       ingredientes: [
         { nombreIngrediente: 'Suero de leche', cantidadRequerida: 1, unidadMedida: 'saco' },
         { nombreIngrediente: 'Endulzante', cantidadRequerida: 16, unidadMedida: 'kilo' },
@@ -71,20 +90,31 @@ export class FormulasHardcodeadasService {
   ];
 
   getFormulaPorId(id: string): FormulaHardcodeada | null {
-    return this.formulas.find(f => f.id === id) || null;
+    return this.formulas.find((f) => f.id === id) || null;
   }
 
-  getTodasLasFormulas(): Array<{ id: string; nombre: string; descripcion?: string }> {
-    // Solo retornar información básica, sin ingredientes
-    return this.formulas.map(f => ({
+  getTodasLasFormulas(): Array<{
+    id: string;
+    nombre: string;
+    descripcion?: string;
+    presentaciones: PresentacionConfig[];
+    cantidadTotalKg: number;
+  }> {
+    return this.formulas.map((f) => ({
       id: f.id,
       nombre: f.nombre,
       descripcion: f.descripcion,
+      presentaciones: f.presentaciones,
+      cantidadTotalKg: f.cantidadTotalKg,
     }));
   }
 
   getCantidadTotalKg(id: string): number {
     const formula = this.getFormulaPorId(id);
     return formula ? formula.cantidadTotalKg : 0;
+  }
+
+  getPresentaciones(id: string): PresentacionConfig[] {
+    return getPresentacionesProducto(id);
   }
 }
