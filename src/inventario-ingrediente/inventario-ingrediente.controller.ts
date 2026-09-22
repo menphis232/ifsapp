@@ -12,6 +12,7 @@ import {
 import { InventarioIngredienteService } from './inventario-ingrediente.service';
 import { CreateInventarioIngredienteDto } from './dto/create-inventario-ingrediente.dto';
 import { UpdateInventarioIngredienteDto } from './dto/update-inventario-ingrediente.dto';
+import { AllowEmpleadoDelete } from '../auth/decorators/allow-empleado-delete.decorator';
 
 @Controller('inventario-ingredientes')
 export class InventarioIngredienteController {
@@ -49,6 +50,7 @@ export class InventarioIngredienteController {
   }
 
   @Delete(':id')
+  @AllowEmpleadoDelete()
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id') id: string) {
     return this.inventarioIngredienteService.remove(id);

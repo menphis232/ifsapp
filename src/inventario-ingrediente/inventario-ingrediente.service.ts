@@ -19,31 +19,36 @@ export class InventarioIngredienteService {
   ) {}
 
   async create(createDto: CreateInventarioIngredienteDto): Promise<InventarioIngrediente> {
-    // Verificar que el ingrediente existe
     await this.ingredienteService.findOne(createDto.ingredienteId);
 
-    // Verificar si ya existe un inventario para este ingrediente
-    let inventario: InventarioIngrediente;
-    try {
-      inventario = await this.findByIngrediente(createDto.ingredienteId);
-      // Si existe, actualizar con los nuevos valores
-      Object.assign(inventario, createDto);
-    } catch (error) {
-      // Si no existe, crear uno nuevo
-      inventario = this.inventarioIngredienteRepository.create(createDto);
+    // Upsert atómico por ingredienteId (evita duplicados por carrera / reintentos)
+    const existente = await this.inventarioIngredienteRepository.findOne({
+      where: { ingredienteId: createDto.ingredienteId },
+    });
+
+    let saved: InventarioIngrediente;
+    if (existente) {
+      await this.inventarioIngredienteRepository.update(existente.id, {
+        cantidad: createDto.cantidad,
+        cantidadMinima: createDto.cantidadMinima ?? existente.cantidadMinima,
+        ubicacion: createDto.ubicacion ?? existente.ubicacion,
+        notas: createDto.notas ?? existente.notas,
+      });
+      saved = await this.findOne(existente.id);
+    } else {
+      const inventario = this.inventarioIngredienteRepository.create(createDto);
+      const creado = await this.inventarioIngredienteRepository.save(inventario);
+      saved = await this.findOne(creado.id);
     }
 
-    const saved = await this.inventarioIngredienteRepository.save(inventario);
-
-    // Verificar si necesita notificación
     await this.verificarYNotificar(saved);
-
     return saved;
   }
 
   async findAll(): Promise<InventarioIngrediente[]> {
     return this.inventarioIngredienteRepository.find({
       relations: ['ingrediente', 'ingrediente.unidadMedida'],
+      where: { ingrediente: { activo: true } },
       order: { createdAt: 'DESC' },
     });
   }
@@ -80,13 +85,10 @@ export class InventarioIngredienteService {
     id: string,
     updateDto: UpdateInventarioIngredienteDto,
   ): Promise<InventarioIngrediente> {
-    const inventario = await this.findOne(id);
-    Object.assign(inventario, updateDto);
-    const saved = await this.inventarioIngredienteRepository.save(inventario);
-
-    // Verificar si necesita notificación
+    await this.findOne(id);
+    await this.inventarioIngredienteRepository.update(id, updateDto);
+    const saved = await this.findOne(id);
     await this.verificarYNotificar(saved);
-
     return saved;
   }
 
@@ -99,6 +101,7 @@ export class InventarioIngredienteService {
     const config = await this.configuracionService.getConfiguracion();
     const inventarios = await this.inventarioIngredienteRepository.find({
       relations: ['ingrediente', 'ingrediente.unidadMedida'],
+      where: { ingrediente: { activo: true } },
     });
 
     return inventarios.filter(
@@ -113,10 +116,13 @@ export class InventarioIngredienteService {
       Number(inventario.cantidadMinima) || config.cantidadMinimaGlobal;
 
     if (Number(inventario.cantidad) <= cantidadMinima && config.notificacionesActivas) {
-      // Crear notificación personalizada para ingredientes
+      const unidad =
+        inventario.ingrediente?.unidadMedida?.abreviatura ||
+        inventario.ingrediente?.unidadMedida?.nombre ||
+        '';
       await this.notificacionService.enviarNotificacionPersonalizada(
         'Alerta de Inventario de Ingrediente',
-        `⚠️ Inventario bajo: ${inventario.ingrediente.nombre}. Cantidad: ${inventario.cantidad} ${inventario.ingrediente.unidadMedida.abreviatura || inventario.ingrediente.unidadMedida.nombre}`,
+        `⚠️ Inventario bajo: ${inventario.ingrediente.nombre}. Cantidad: ${inventario.cantidad} ${unidad}`,
       );
     }
   }

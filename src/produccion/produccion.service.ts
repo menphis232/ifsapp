@@ -12,6 +12,7 @@ import { EtiquetaService } from '../etiqueta/etiqueta.service';
 import { IngredienteService } from '../ingrediente/ingrediente.service';
 import { FormulasHardcodeadasService } from './formulas-hardcodeadas.service';
 import { NotificacionService } from '../notificacion/notificacion.service';
+import { convertirCantidad } from '../common/utils/unidad-medida.util';
 
 @Injectable()
 export class ProduccionService {
@@ -65,8 +66,16 @@ export class ProduccionService {
           const inventario = await this.inventarioIngredienteService.findByIngrediente(
             ingrediente.id,
           );
+          const unidadStock =
+            ingrediente.unidadMedida?.nombre ||
+            ingrediente.unidadMedida?.abreviatura ||
+            '';
           const disponible = Number(inventario.cantidad);
-          const requerido = ingredienteFormula.cantidadRequerida;
+          const requerido = convertirCantidad(
+            Number(ingredienteFormula.cantidadRequerida),
+            ingredienteFormula.unidadMedida,
+            unidadStock,
+          );
 
           if (disponible < requerido) {
             faltantes.push({
@@ -292,7 +301,16 @@ export class ProduccionService {
           const inventario = await this.inventarioIngredienteService.findByIngrediente(
             ingrediente.id,
           );
-          const nuevaCantidad = Number(inventario.cantidad) - ingredienteFormula.cantidadRequerida;
+          const unidadStock =
+            ingrediente.unidadMedida?.nombre ||
+            ingrediente.unidadMedida?.abreviatura ||
+            '';
+          const requerido = convertirCantidad(
+            Number(ingredienteFormula.cantidadRequerida),
+            ingredienteFormula.unidadMedida,
+            unidadStock,
+          );
+          const nuevaCantidad = Number(inventario.cantidad) - requerido;
           
           await this.inventarioIngredienteService.update(inventario.id, {
             cantidad: nuevaCantidad,

@@ -12,6 +12,7 @@ import {
 import { IngredienteService } from './ingrediente.service';
 import { CreateIngredienteDto } from './dto/create-ingrediente.dto';
 import { UpdateIngredienteDto } from './dto/update-ingrediente.dto';
+import { AllowEmpleadoDelete } from '../auth/decorators/allow-empleado-delete.decorator';
 
 @Controller('ingredientes')
 export class IngredienteController {
@@ -44,6 +45,7 @@ export class IngredienteController {
   }
 
   @Delete(':id')
+  @AllowEmpleadoDelete()
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id') id: string) {
     return this.ingredienteService.remove(id);

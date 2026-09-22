@@ -6,6 +6,7 @@ import {
   UpdateDateColumn,
   ManyToOne,
   JoinColumn,
+  Index,
 } from 'typeorm';
 import { Ingrediente } from '../../ingrediente/entities/ingrediente.entity';
 
@@ -14,6 +15,7 @@ export class InventarioIngrediente {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Index({ unique: true })
   @Column()
   ingredienteId: string;
 

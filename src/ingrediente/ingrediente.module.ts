@@ -3,10 +3,14 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { IngredienteService } from './ingrediente.service';
 import { IngredienteController } from './ingrediente.controller';
 import { Ingrediente } from './entities/ingrediente.entity';
+import { InventarioIngrediente } from '../inventario-ingrediente/entities/inventario-ingrediente.entity';
 import { UnidadMedidaModule } from '../unidad-medida/unidad-medida.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Ingrediente]), UnidadMedidaModule],
+  imports: [
+    TypeOrmModule.forFeature([Ingrediente, InventarioIngrediente]),
+    UnidadMedidaModule,
+  ],
   controllers: [IngredienteController],
   providers: [IngredienteService],
   exports: [IngredienteService],
